@@ -6,6 +6,8 @@ import TradingPanel, { PendingOrder, OrderType } from '@/components/TradingPanel
 import PortfolioSummary from '@/components/PortfolioSummary';
 import TimeControls from '@/components/TimeControls';
 import { supabase } from '@/lib/supabase';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useAuth } from '@/contexts/AuthContext';
 
 // Types
 interface StockData {
@@ -27,17 +29,20 @@ interface Portfolio {
   holdings: { [ticker: string]: { quantity: number; avgCost: number } };
 }
 
-const INITIAL_CASH = 1000000; // 1 Million Yen
 const DEFAULT_TICKER = '7203.T'; // Toyota
 
 export default function Home() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { user, loading: authLoading, signOut } = useAuth();
+
   // State
   const [ticker, setTicker] = useState(DEFAULT_TICKER);
   const [inputTicker, setInputTicker] = useState(DEFAULT_TICKER); // Separate state for input
   const [marketData, setMarketData] = useState<StockData[]>([]);
   const [currentDate, setCurrentDate] = useState<string>('');
   const [portfolio, setPortfolio] = useState<Portfolio>({
-    cash: INITIAL_CASH,
+    cash: 0,
     holdings: {}
   });
   const [isPlaying, setIsPlaying] = useState(false);
@@ -48,21 +53,23 @@ export default function Home() {
   const [isInitialized, setIsInitialized] = useState(false);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Generate or retrieve session ID
+  // Redirect to login if not authenticated
   useEffect(() => {
-    const storedSessionId = localStorage.getItem('backtest_session_id');
-    if (storedSessionId) {
-      setSessionId(storedSessionId);
-    } else {
-      const newSessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      localStorage.setItem('backtest_session_id', newSessionId);
-      setSessionId(newSessionId);
+    if (!authLoading && !user) {
+      router.replace('/login');
     }
-  }, []);
+  }, [authLoading, user, router]);
+
+  // Set session ID from user id
+  useEffect(() => {
+    if (user?.id) {
+      setSessionId(user.id);
+    }
+  }, [user]);
 
   // Load state from Supabase
   useEffect(() => {
-    if (!sessionId) return;
+    if (!sessionId || !user) return;
 
     const loadState = async () => {
       try {
@@ -81,16 +88,25 @@ export default function Home() {
             holdings: data.portfolio_holdings || {}
           });
           setPendingOrders(data.pending_orders || []);
+        } else {
+          // No data -> initialize with initialCash (from login page param or default 1,000,000)
+          const initialCashParam = searchParams.get('initialCash');
+          const initialCash = initialCashParam ? Number(initialCashParam) : 1000000;
+          setPortfolio({ cash: initialCash, holdings: {} });
+          setCurrentDate('');
         }
       } catch (err) {
         console.log('No existing state found, starting fresh');
+        const initialCashParam = searchParams.get('initialCash');
+        const initialCash = initialCashParam ? Number(initialCashParam) : 1000000;
+        setPortfolio({ cash: initialCash, holdings: {} });
       } finally {
         setIsInitialized(true);
       }
     };
 
     loadState();
-  }, [sessionId]);
+  }, [sessionId, user, searchParams]);
 
   // Save state to Supabase (debounced)
   useEffect(() => {
@@ -401,7 +417,7 @@ export default function Home() {
   };
 
 
-  if (loading) return <div className="flex justify-center items-center h-screen">Loading...</div>;
+  if (loading || authLoading || !user) return <div className="flex justify-center items-center h-screen">Loading...</div>;
 
   return (
     <main className="min-h-screen bg-gray-100 p-8">
@@ -424,12 +440,20 @@ export default function Home() {
                 placeholder="7203.T"
               />
             </div>
-            <button
-              onClick={handleResetAccount}
-              className="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 text-sm"
-            >
-              リセット
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleResetAccount}
+                className="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 text-sm"
+              >
+                リセット
+              </button>
+              <button
+                onClick={signOut}
+                className="px-3 py-1 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 text-sm"
+              >
+                ログアウト
+              </button>
+            </div>
           </div>
         </header>
 

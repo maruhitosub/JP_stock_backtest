@@ -440,11 +440,14 @@ export default function Home() {
         />
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 space-y-6">
+          <div className="lg:col-span-2">
             <StockChart
               data={marketData}
               currentDate={currentDate}
             />
+          </div>
+
+          <div className="lg:col-span-1 space-y-6">
             <TimeControls
               currentDate={currentDate}
               minDate={marketData[0]?.Date || ''}
@@ -454,9 +457,6 @@ export default function Home() {
               isPlaying={isPlaying}
               onTogglePlay={() => setIsPlaying(!isPlaying)}
             />
-          </div>
-
-          <div className="lg:col-span-1">
             <TradingPanel
               ticker={ticker}
               currentPrice={currentPrice}
